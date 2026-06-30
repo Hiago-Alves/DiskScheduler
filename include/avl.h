@@ -63,4 +63,38 @@ int32_t avl_balance_factor(const AVLNode *node);
  */
 AVLNode *avl_create_node(Request req);
 
+/* ------------------------------------------------------------------ */
+/*  Rotações                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * @brief Rotação simples à esquerda (caso RR).
+ *
+ * Uso: bf(node) < -1 e bf(node->right) <= 0
+ *
+ *      node                 right
+ *      /  \                 /   \
+ *     T1  right   →      node   T3
+ *         /  \           /  \
+ *        T2  T3         T1  T2
+ *
+ * @return Nova raiz da subárvore.
+ */
+AVLNode *avl_rotate_left(AVLNode *node);
+
+/**
+ * @brief Rotação simples à direita (caso LL).
+ *
+ * Uso: bf(node) > 1 e bf(node->left) >= 0
+ *
+ *        node              left
+ *        /  \              /  \
+ *      left  T3   →      T1  node
+ *      /  \                   /  \
+ *     T1  T2                T2   T3
+ *
+ * @return Nova raiz da subárvore.
+ */
+AVLNode *avl_rotate_right(AVLNode *node);
+
 #endif /* AVL_H */

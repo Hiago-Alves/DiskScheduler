@@ -59,3 +59,51 @@ AVLNode *avl_create_node(Request req)
 
     return node;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Rotações                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Rotação à esquerda (caso RR).
+ *
+ * `right` sobe e toma o lugar de `node`.
+ * O filho esquerdo de `right` (T2) passa a ser filho direito de `node`,
+ * preservando a propriedade de BST (T2 > node e T2 < right).
+ * Alturas de `node` e `right` são recalculadas de baixo para cima.
+ */
+AVLNode *avl_rotate_left(AVLNode *node)
+{
+    AVLNode *right     = node->right;  /* novo pai              */
+    AVLNode *t2        = right->left;  /* subárvore realocada   */
+
+    right->left  = node;   /* node desce para filho esquerdo   */
+    node->right  = t2;     /* T2 migra para direita de node    */
+
+    avl_update_height(node);   /* node primeiro — está mais baixo  */
+    avl_update_height(right);  /* right depois  — depende de node  */
+
+    return right;  /* nova raiz da subárvore */
+}
+
+/**
+ * Rotação à direita (caso LL).
+ *
+ * `left` sobe e toma o lugar de `node`.
+ * O filho direito de `left` (T2) passa a ser filho esquerdo de `node`,
+ * preservando a propriedade de BST (T2 > left e T2 < node).
+ * Alturas de `node` e `left` são recalculadas de baixo para cima.
+ */
+AVLNode *avl_rotate_right(AVLNode *node)
+{
+    AVLNode *left      = node->left;   /* novo pai              */
+    AVLNode *t2        = left->right;  /* subárvore realocada   */
+
+    left->right  = node;   /* node desce para filho direito    */
+    node->left   = t2;     /* T2 migra para esquerda de node   */
+
+    avl_update_height(node);   /* node primeiro — está mais baixo  */
+    avl_update_height(left);   /* left depois   — depende de node  */
+
+    return left;   /* nova raiz da subárvore */
+}
