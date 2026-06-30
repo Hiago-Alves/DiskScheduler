@@ -107,3 +107,63 @@ AVLNode *avl_rotate_right(AVLNode *node)
 
     return left;   /* nova raiz da subárvore */
 }
+
+/* ------------------------------------------------------------------ */
+/*  Inserção                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Insere recursivamente uma Request na AVL ordenada por cylinder.
+ *
+ * Etapas por chamada recursiva:
+ *   1. Caso base: cria o nó folha quando root == NULL.
+ *   2. Desce à esquerda se cylinder < raiz, à direita caso contrário.
+ *   3. Atualiza a altura do nó corrente na volta da recursão.
+ *   4. Calcula o fator de balanceamento e aplica a rotação adequada:
+ *
+ *      bf >  1 e key <  left->cylinder  → LL → rotateRight
+ *      bf >  1 e key >= left->cylinder  → LR → rotateLeft(left) + rotateRight
+ *      bf < -1 e key >= right->cylinder → RR → rotateLeft
+ *      bf < -1 e key <  right->cylinder → RL → rotateRight(right) + rotateLeft
+ *
+ *   5. Retorna a (nova) raiz da subárvore para o nível acima.
+ */
+AVLNode *avl_insert(AVLNode *root, Request req)
+{
+    /* --- passo 1: inserção BST normal --- */
+    if (root == NULL)
+        return avl_create_node(req);   /* folha nova */
+
+    if (req.cylinder < root->req.cylinder)
+        root->left  = avl_insert(root->left,  req);
+    else                                           /* >= vai à direita */
+        root->right = avl_insert(root->right, req);
+
+    /* --- passo 2: atualiza altura na volta da recursão --- */
+    avl_update_height(root);
+
+    /* --- passo 3: verifica balanceamento --- */
+    int32_t bf = avl_balance_factor(root);
+
+    /* LL — subárvore esquerda pesada, inserção foi à esquerda */
+    if (bf > 1 && req.cylinder < root->left->req.cylinder)
+        return avl_rotate_right(root);
+
+    /* RR — subárvore direita pesada, inserção foi à direita */
+    if (bf < -1 && req.cylinder >= root->right->req.cylinder)
+        return avl_rotate_left(root);
+
+    /* LR — subárvore esquerda pesada, inserção foi à direita dela */
+    if (bf > 1 && req.cylinder >= root->left->req.cylinder) {
+        root->left = avl_rotate_left(root->left);
+        return avl_rotate_right(root);
+    }
+
+    /* RL — subárvore direita pesada, inserção foi à esquerda dela */
+    if (bf < -1 && req.cylinder < root->right->req.cylinder) {
+        root->right = avl_rotate_right(root->right);
+        return avl_rotate_left(root);
+    }
+
+    return root;   /* balanceado: retorna a raiz sem alteração */
+}

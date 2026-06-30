@@ -97,4 +97,23 @@ AVLNode *avl_rotate_left(AVLNode *node);
  */
 AVLNode *avl_rotate_right(AVLNode *node);
 
+/* ------------------------------------------------------------------ */
+/*  Inserção                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * @brief Insere uma requisição na AVL ordenada por cylinder.
+ *
+ * Inserção recursiva padrão de BST seguida de rebalanceamento
+ * automático pelos quatro casos (LL, RR, LR, RL).
+ *
+ * Cilindros duplicados são permitidos: o novo nó vai para a
+ * subárvore direita (cylinder >= raiz vai à direita).
+ *
+ * @param  root  Raiz atual da subárvore (pode ser NULL).
+ * @param  req   Requisição a inserir.
+ * @return Nova raiz da subárvore após inserção e balanceamento.
+ */
+AVLNode *avl_insert(AVLNode *root, Request req);
+
 #endif /* AVL_H */
