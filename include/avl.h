@@ -163,4 +163,55 @@ AVLNode *avl_search(AVLNode *root, uint32_t cylinder, uint32_t id);
  */
 AVLNode *avl_remove(AVLNode *root, uint32_t cylinder, uint32_t id);
 
+/* ------------------------------------------------------------------ */
+/*  Predecessor e Sucessor                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * @brief Retorna o nó predecessor de @p node na árvore.
+ *
+ * O predecessor é o nó com o maior cylinder estritamente menor
+ * que node->req.cylinder — o vizinho imediato à esquerda na
+ * travessia in-order.
+ *
+ * Estratégia (sem ponteiro de pai):
+ *   - Se node possui subárvore esquerda: desce nela sempre à
+ *     direita (rightmost) — esse é o maior valor menor que node.
+ *   - Caso contrário: desce a partir de @p root mantendo um
+ *     ponteiro @c candidate atualizado toda vez que viramos à
+ *     direita; o último candidate é o predecessor.
+ *
+ * @param  root  Raiz da árvore inteira. Não deve ser NULL.
+ * @param  node  Nó de referência. Não deve ser NULL.
+ * @return Ponteiro para o nó predecessor, ou NULL se @p node for
+ *         o menor elemento da árvore (não há predecessor).
+ *
+ * @note Complexidade: O(h), onde h é a altura da árvore.
+ */
+AVLNode *avl_predecessor(AVLNode *root, const AVLNode *node);
+
+/**
+ * @brief Retorna o nó sucessor de @p node na árvore.
+ *
+ * O sucessor é o nó com o menor cylinder estritamente maior
+ * que node->req.cylinder — o vizinho imediato à direita na
+ * travessia in-order.
+ *
+ * Estratégia (sem ponteiro de pai):
+ *   - Se node possui subárvore direita: desce nela sempre à
+ *     esquerda (leftmost) — esse é o menor valor maior que node.
+ *     Essa lógica já existe em @c avl_min_node; reutilizamos aqui.
+ *   - Caso contrário: desce a partir de @p root mantendo um
+ *     ponteiro @c candidate atualizado toda vez que viramos à
+ *     esquerda; o último candidate é o sucessor.
+ *
+ * @param  root  Raiz da árvore inteira. Não deve ser NULL.
+ * @param  node  Nó de referência. Não deve ser NULL.
+ * @return Ponteiro para o nó sucessor, ou NULL se @p node for
+ *         o maior elemento da árvore (não há sucessor).
+ *
+ * @note Complexidade: O(h), onde h é a altura da árvore.
+ */
+AVLNode *avl_successor(AVLNode *root, const AVLNode *node);
+
 #endif /* AVL_H */

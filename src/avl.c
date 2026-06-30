@@ -258,6 +258,179 @@ AVLNode *avl_remove(AVLNode *root, uint32_t cylinder, uint32_t id)
                                  successor->req.id);
     }
 
+/* ------------------------------------------------------------------ */
+/*  Predecessor e Sucessor                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Predecessor — maior cylinder estritamente menor que node->req.cylinder.
+ *
+ * Caso 1: node possui subárvore esquerda.
+ *
+ *      node
+ *      /
+ *    [L]                 ← desce aqui
+ *      \
+ *       ...
+ *         \
+ *       [predecessor]   ← rightmost de L
+ *
+ * Basta caminhar sempre à direita dentro de node->left.
+ * Esse nó é garantidamente o maior valor abaixo de node->cylinder.
+ *
+ * Caso 2: node NÃO possui subárvore esquerda.
+ *
+ * Descemos a partir da raiz como em uma busca BST normal.
+ * Toda vez que viramos à DIREITA (root->cylinder < node->cylinder),
+ * o nó atual É um candidato a predecessor — ele é menor que node
+ * e é o maior que já vimos nesse caminho.
+ * Quando chegamos ao nó alvo, o último candidate guardado é
+ * o predecessor correto.
+ *
+ *      [candidate] ← atualizado aqui (viramos à direita)
+ *            \
+ *            ...
+ *              \
+ *             [node]  (sem filho esquerdo)
+ */
+AVLNode *avl_predecessor(AVLNode *root, const AVLNode *node)
+{
+    /* Caso 1: subárvore esquerda existe — rightmost dela é o predecessor. */
+    if (node->left != NULL) {
+        AVLNode *current = node->left;
+
+        /* Desce sempre à direita até o fim. */
+        while (current->right != NULL) {
+            current = current->right;
+        }
+
+        return current;
+    }
+
+    /* Caso 2: sem subárvore esquerda — busca a partir da raiz. */
+    AVLNode *candidate = NULL;  /* melhor predecessor visto até agora */
+    AVLNode *current   = root;
+
+    while (current != NULL) {
+
+        if (node->req.cylinder > current->req.cylinder) {
+            /*
+             * current é menor que node: é um candidato válido.
+             * Viramos à direita para encontrar um valor ainda maior
+             * (mas ainda menor que node).
+             */
+            candidate = current;
+            current   = current->right;
+
+        } else if (node->req.cylinder < current->req.cylinder) {
+            /*
+             * current é maior que node: não pode ser predecessor.
+             * Viramos à esquerda para encontrar valores menores.
+             */
+            current = current->left;
+
+        } else {
+            /*
+             * cylinder igual: distingue pelo id (igual à lógica de
+             * avl_search). Se o id de node for maior, current ainda
+             * pode ser predecessor — atualiza candidate e vai à direita.
+             * Se for menor, vai à esquerda sem atualizar candidate.
+             */
+            if (node->req.id > current->req.id) {
+                candidate = current;
+                current   = current->right;
+            } else if (node->req.id < current->req.id) {
+                current = current->left;
+            } else {
+                /* nó exato encontrado — para a busca */
+                break;
+            }
+        }
+    }
+
+    return candidate;   /* NULL se node é o menor elemento */
+}
+
+/**
+ * Sucessor — menor cylinder estritamente maior que node->req.cylinder.
+ *
+ * Caso 1: node possui subárvore direita.
+ *
+ *      node
+ *          \
+ *          [R]               ← desce aqui
+ *          /
+ *        ...
+ *        /
+ *     [successor]            ← leftmost de R
+ *
+ * Reutilizamos avl_min_node(node->right), que já faz exatamente isso.
+ *
+ * Caso 2: node NÃO possui subárvore direita.
+ *
+ * Descemos a partir da raiz como em uma busca BST normal.
+ * Toda vez que viramos à ESQUERDA (root->cylinder > node->cylinder),
+ * o nó atual É um candidato a sucessor — ele é maior que node
+ * e é o menor que já vimos nesse caminho.
+ * Quando chegamos ao nó alvo, o último candidate guardado é
+ * o sucessor correto.
+ *
+ *      [candidate] ← atualizado aqui (viramos à esquerda)
+ *            /
+ *           ...
+ *           /
+ *         [node]  (sem filho direito)
+ */
+AVLNode *avl_successor(AVLNode *root, const AVLNode *node)
+{
+    /* Caso 1: subárvore direita existe — leftmost dela é o sucessor. */
+    if (node->right != NULL) {
+        return avl_min_node(node->right);   /* reutiliza função existente */
+    }
+
+    /* Caso 2: sem subárvore direita — busca a partir da raiz. */
+    AVLNode *candidate = NULL;  /* melhor sucessor visto até agora */
+    AVLNode *current   = root;
+
+    while (current != NULL) {
+
+        if (node->req.cylinder < current->req.cylinder) {
+            /*
+             * current é maior que node: é um candidato válido.
+             * Viramos à esquerda para encontrar um valor ainda menor
+             * (mas ainda maior que node).
+             */
+            candidate = current;
+            current   = current->left;
+
+        } else if (node->req.cylinder > current->req.cylinder) {
+            /*
+             * current é menor que node: não pode ser sucessor.
+             * Viramos à direita para encontrar valores maiores.
+             */
+            current = current->right;
+
+        } else {
+            /*
+             * cylinder igual: distingue pelo id (espelho de avl_predecessor).
+             * Se o id de node for menor, current ainda pode ser sucessor —
+             * atualiza candidate e vai à esquerda.
+             * Se for maior, vai à direita sem atualizar candidate.
+             */
+            if (node->req.id < current->req.id) {
+                candidate = current;
+                current   = current->left;
+            } else if (node->req.id > current->req.id) {
+                current = current->right;
+            } else {
+                /* nó exato encontrado — para a busca */
+                break;
+            }
+        }
+    }
+
+    return candidate;   /* NULL se node é o maior elemento */
+}
 rebalance:
     /* --- atualiza altura e rebalanceia --- */
     avl_update_height(root);
