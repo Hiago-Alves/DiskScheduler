@@ -116,4 +116,51 @@ AVLNode *avl_rotate_right(AVLNode *node);
  */
 AVLNode *avl_insert(AVLNode *root, Request req);
 
+/* ------------------------------------------------------------------ */
+/*  Busca e Remoção                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * @brief Retorna o nó com o menor cylinder na subárvore.
+ *
+ * Caminha sempre à esquerda até o fim.
+ * Usado internamente pela remoção para encontrar o sucessor in-order
+ * (menor nó da subárvore direita) como substituto do nó removido.
+ *
+ * @param  node  Raiz da subárvore (não pode ser NULL).
+ * @return Ponteiro para o nó mínimo (nunca NULL se node != NULL).
+ */
+AVLNode *avl_min_node(AVLNode *node);
+
+/**
+ * @brief Busca uma requisição pelo cylinder e pelo id.
+ *
+ * Desce pela árvore usando cylinder como chave. Quando encontra
+ * um nó com o cylinder pedido, compara também o id para distinguir
+ * requisições duplicadas no mesmo cilindro.
+ *
+ * @param  root      Raiz da subárvore.
+ * @param  cylinder  Cilindro a localizar.
+ * @param  id        Id da requisição a localizar.
+ * @return Ponteiro para o nó encontrado, ou NULL se não existir.
+ */
+AVLNode *avl_search(AVLNode *root, uint32_t cylinder, uint32_t id);
+
+/**
+ * @brief Remove a requisição com o cylinder e id fornecidos.
+ *
+ * Remoção recursiva de BST com três casos:
+ *   - Nó folha        → libera e retorna NULL.
+ *   - Um filho        → substitui pelo filho existente.
+ *   - Dois filhos     → substitui pelo sucessor in-order,
+ *                       remove o sucessor da subárvore direita.
+ * Após remover, rebalanceia pelo mesmo mecanismo da inserção.
+ *
+ * @param  root      Raiz atual da subárvore.
+ * @param  cylinder  Cilindro do nó a remover.
+ * @param  id        Id da requisição a remover.
+ * @return Nova raiz da subárvore após remoção e balanceamento.
+ */
+AVLNode *avl_remove(AVLNode *root, uint32_t cylinder, uint32_t id);
+
 #endif /* AVL_H */

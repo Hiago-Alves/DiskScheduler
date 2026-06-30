@@ -167,3 +167,122 @@ AVLNode *avl_insert(AVLNode *root, Request req)
 
     return root;   /* balanceado: retorna a raiz sem alteração */
 }
+
+/* ------------------------------------------------------------------ */
+/*  Busca e Remoção                                                     */
+/* ------------------------------------------------------------------ */
+
+/** Caminha à esquerda até o fim; retorna o nó de menor cylinder. */
+AVLNode *avl_min_node(AVLNode *node)
+{
+    while (node->left != NULL)
+        node = node->left;
+    return node;
+}
+
+/**
+ * Busca por cylinder + id.
+ *
+ * Desce como BST usando cylinder. Ao encontrar um nó com o cylinder
+ * correto, verifica o id para resolver duplicatas:
+ *   - id bate  → achou, retorna o nó.
+ *   - id maior → continua à direita (duplicatas vão à direita).
+ *   - id menor → continua à esquerda (não deve ocorrer em uso normal,
+ *                mas tratado defensivamente).
+ */
+AVLNode *avl_search(AVLNode *root, uint32_t cylinder, uint32_t id)
+{
+    if (root == NULL) return NULL;   /* não encontrado */
+
+    if (cylinder < root->req.cylinder)
+        return avl_search(root->left,  cylinder, id);
+
+    if (cylinder > root->req.cylinder)
+        return avl_search(root->right, cylinder, id);
+
+    /* cylinder == root: compara id para distinguir duplicatas */
+    if (id == root->req.id)   return root;
+    if (id >  root->req.id)   return avl_search(root->right, cylinder, id);
+                               return avl_search(root->left,  cylinder, id);
+}
+
+/**
+ * Remove o nó com (cylinder, id) e rebalanceia na volta da recursão.
+ *
+ * Caso 1 — nó folha: libera e retorna NULL.
+ * Caso 2 — um filho: retorna o filho sobrevivente (free no nó atual).
+ * Caso 3 — dois filhos: copia o conteúdo do sucessor in-order para
+ *           o nó atual e remove o sucessor da subárvore direita.
+ *           Isso evita a troca de ponteiros e simplifica o código.
+ *
+ * Rebalanceamento idêntico ao da inserção, mas o critério usa o
+ * fator de balanceamento dos filhos (não a chave inserida), pois
+ * qualquer remoção pode desbalancear qualquer um dos lados.
+ */
+AVLNode *avl_remove(AVLNode *root, uint32_t cylinder, uint32_t id)
+{
+    if (root == NULL) return NULL;   /* nó não encontrado */
+
+    /* --- desce na direção correta --- */
+    if (cylinder < root->req.cylinder) {
+        root->left  = avl_remove(root->left,  cylinder, id);
+    } else if (cylinder > root->req.cylinder) {
+        root->right = avl_remove(root->right, cylinder, id);
+    } else {
+        /* cylinder bate: verifica id para duplicatas */
+        if (id != root->req.id) {
+            /* id maior → está à direita; senão à esquerda */
+            if (id > root->req.id)
+                root->right = avl_remove(root->right, cylinder, id);
+            else
+                root->left  = avl_remove(root->left,  cylinder, id);
+            goto rebalance;
+        }
+
+        /* --- nó encontrado: remove --- */
+
+        /* caso 1 e 2: zero ou um filho */
+        if (root->left == NULL || root->right == NULL) {
+            AVLNode *child = (root->left != NULL) ? root->left
+                                                  : root->right;
+            free(root);
+            return child;   /* child pode ser NULL (folha) */
+        }
+
+        /* caso 3: dois filhos — substitui pelo sucessor in-order */
+        AVLNode *successor = avl_min_node(root->right);
+        root->req   = successor->req;   /* copia conteúdo por valor  */
+        /* remove o sucessor da subárvore direita */
+        root->right = avl_remove(root->right,
+                                 successor->req.cylinder,
+                                 successor->req.id);
+    }
+
+rebalance:
+    /* --- atualiza altura e rebalanceia --- */
+    avl_update_height(root);
+
+    int32_t bf = avl_balance_factor(root);
+
+    /* LL */
+    if (bf > 1 && avl_balance_factor(root->left) >= 0)
+        return avl_rotate_right(root);
+
+    /* LR */
+    if (bf > 1 && avl_balance_factor(root->left) < 0) {
+        root->left = avl_rotate_left(root->left);
+        return avl_rotate_right(root);
+    }
+
+    /* RR */
+    if (bf < -1 && avl_balance_factor(root->right) <= 0)
+        return avl_rotate_left(root);
+
+    /* RL */
+    if (bf < -1 && avl_balance_factor(root->right) > 0) {
+        root->right = avl_rotate_right(root->right);
+        return avl_rotate_left(root);
+    }
+
+    return root;
+}
