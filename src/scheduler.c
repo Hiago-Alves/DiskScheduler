@@ -434,7 +434,7 @@ void scheduler_print_stats(const Scheduler *sched)
 {
     if (sched == NULL) return;
 
-    printf("=== Scheduler — estado atual ===\n");
+    printf("=== Scheduler - estado atual ===\n");
     printf("  Requisicoes pendentes : %u\n",  sched->request_count);
     printf("  Requisicoes atendidas : %llu\n",
            (unsigned long long)sched->total_served);

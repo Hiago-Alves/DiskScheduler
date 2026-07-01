@@ -205,18 +205,18 @@ void disk_print_state(const Disk *disk)
         return;
     }
 
-    const char *dir_str = (disk->direction == DIR_RIGHT) ? "DIREITA (→)"
-                                                         : "ESQUERDA (←)";
+    const char *dir_str = (disk->direction == DIR_RIGHT) ? "DIREITA (->)"
+                                                         : "ESQUERDA (<-)";
 
-    printf("┌─────────────────────────────────────────┐\n");
-    printf("│           Estado do Disco                │\n");
-    printf("├─────────────────────────────────────────┤\n");
-    printf("│  Cabeça:       cilindro %-4u             │\n",
+    printf("+-----------------------------------------+\n");
+    printf("|           Estado do Disco                |\n");
+    printf("+-----------------------------------------+\n");
+    printf("|  Cabeca:       cilindro %-4u             |\n",
            disk->head_position);
-    printf("│  Direção:      %-10s               │\n", dir_str);
-    printf("│  Tempo atual:  %-10llu us             │\n",
+    printf("|  Direcao:      %-10s               |\n", dir_str);
+    printf("|  Tempo atual:  %-10llu us             |\n",
            (unsigned long long)disk->current_time);
-    printf("│  Dist. total:  %-10llu cilindros      │\n",
+    printf("|  Dist. total:  %-10llu cilindros      |\n",
            (unsigned long long)disk->total_seek_distance);
-    printf("└─────────────────────────────────────────┘\n");
+    printf("+-----------------------------------------+\n");
 }
