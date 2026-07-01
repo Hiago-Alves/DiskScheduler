@@ -7,7 +7,7 @@
 
 #include "../include/avl.h"
 
-#include <stdlib.h>  /* malloc  */
+#include <stdlib.h>  /* malloc, free */
 
 /* ------------------------------------------------------------------ */
 /*  Funções base                                                        */
@@ -74,11 +74,11 @@ AVLNode *avl_create_node(Request req)
  */
 AVLNode *avl_rotate_left(AVLNode *node)
 {
-    AVLNode *right     = node->right;  /* novo pai              */
-    AVLNode *t2        = right->left;  /* subárvore realocada   */
+    AVLNode *right = node->right;  /* novo pai              */
+    AVLNode *t2    = right->left;  /* subárvore realocada   */
 
-    right->left  = node;   /* node desce para filho esquerdo   */
-    node->right  = t2;     /* T2 migra para direita de node    */
+    right->left = node;   /* node desce para filho esquerdo   */
+    node->right = t2;     /* T2 migra para direita de node    */
 
     avl_update_height(node);   /* node primeiro — está mais baixo  */
     avl_update_height(right);  /* right depois  — depende de node  */
@@ -96,11 +96,11 @@ AVLNode *avl_rotate_left(AVLNode *node)
  */
 AVLNode *avl_rotate_right(AVLNode *node)
 {
-    AVLNode *left      = node->left;   /* novo pai              */
-    AVLNode *t2        = left->right;  /* subárvore realocada   */
+    AVLNode *left = node->left;   /* novo pai              */
+    AVLNode *t2   = left->right;  /* subárvore realocada   */
 
-    left->right  = node;   /* node desce para filho direito    */
-    node->left   = t2;     /* T2 migra para esquerda de node   */
+    left->right = node;   /* node desce para filho direito    */
+    node->left  = t2;     /* T2 migra para esquerda de node   */
 
     avl_update_height(node);   /* node primeiro — está mais baixo  */
     avl_update_height(left);   /* left depois   — depende de node  */
@@ -258,6 +258,35 @@ AVLNode *avl_remove(AVLNode *root, uint32_t cylinder, uint32_t id)
                                  successor->req.id);
     }
 
+rebalance:
+    /* --- atualiza altura e rebalanceia --- */
+    avl_update_height(root);
+
+    int32_t bf = avl_balance_factor(root);
+
+    /* LL */
+    if (bf > 1 && avl_balance_factor(root->left) >= 0)
+        return avl_rotate_right(root);
+
+    /* LR */
+    if (bf > 1 && avl_balance_factor(root->left) < 0) {
+        root->left = avl_rotate_left(root->left);
+        return avl_rotate_right(root);
+    }
+
+    /* RR */
+    if (bf < -1 && avl_balance_factor(root->right) <= 0)
+        return avl_rotate_left(root);
+
+    /* RL */
+    if (bf < -1 && avl_balance_factor(root->right) > 0) {
+        root->right = avl_rotate_right(root->right);
+        return avl_rotate_left(root);
+    }
+
+    return root;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Predecessor e Sucessor                                             */
 /* ------------------------------------------------------------------ */
@@ -281,7 +310,7 @@ AVLNode *avl_remove(AVLNode *root, uint32_t cylinder, uint32_t id)
  * Caso 2: node NÃO possui subárvore esquerda.
  *
  * Descemos a partir da raiz como em uma busca BST normal.
- * Toda vez que viramos à DIREITA (root->cylinder < node->cylinder),
+ * Toda vez que viramos à DIREITA (current->cylinder < node->cylinder),
  * o nó atual É um candidato a predecessor — ele é menor que node
  * e é o maior que já vimos nesse caminho.
  * Quando chegamos ao nó alvo, o último candidate guardado é
@@ -369,7 +398,7 @@ AVLNode *avl_predecessor(AVLNode *root, const AVLNode *node)
  * Caso 2: node NÃO possui subárvore direita.
  *
  * Descemos a partir da raiz como em uma busca BST normal.
- * Toda vez que viramos à ESQUERDA (root->cylinder > node->cylinder),
+ * Toda vez que viramos à ESQUERDA (current->cylinder > node->cylinder),
  * o nó atual É um candidato a sucessor — ele é maior que node
  * e é o menor que já vimos nesse caminho.
  * Quando chegamos ao nó alvo, o último candidate guardado é
@@ -430,32 +459,4 @@ AVLNode *avl_successor(AVLNode *root, const AVLNode *node)
     }
 
     return candidate;   /* NULL se node é o maior elemento */
-}
-rebalance:
-    /* --- atualiza altura e rebalanceia --- */
-    avl_update_height(root);
-
-    int32_t bf = avl_balance_factor(root);
-
-    /* LL */
-    if (bf > 1 && avl_balance_factor(root->left) >= 0)
-        return avl_rotate_right(root);
-
-    /* LR */
-    if (bf > 1 && avl_balance_factor(root->left) < 0) {
-        root->left = avl_rotate_left(root->left);
-        return avl_rotate_right(root);
-    }
-
-    /* RR */
-    if (bf < -1 && avl_balance_factor(root->right) <= 0)
-        return avl_rotate_left(root);
-
-    /* RL */
-    if (bf < -1 && avl_balance_factor(root->right) > 0) {
-        root->right = avl_rotate_right(root->right);
-        return avl_rotate_left(root);
-    }
-
-    return root;
 }

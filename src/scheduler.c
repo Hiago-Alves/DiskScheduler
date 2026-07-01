@@ -1,13 +1,15 @@
 /**
  * @file    scheduler.c
- * @brief   Implementação da infraestrutura do escalonador de disco.
+ * @brief   Implementação da infraestrutura do escalonador de disco e
+ *          do algoritmo de escalonamento FCFS.
  *
  * Padrão: C11
  */
 
 #include "../include/scheduler.h"
 
-#include <stdio.h>    /* printf  */
+#include <stdio.h>    /* printf          */
+#include <stdlib.h>   /* malloc, free, qsort */
 
 /* ------------------------------------------------------------------ */
 /*  Funções auxiliares internas (static)                               */
@@ -29,6 +31,107 @@ static AVLNode *scheduler_max_node(AVLNode *node)
         node = node->right;
     }
     return node;
+}
+
+/**
+ * @brief Travessia em-ordem da AVL que copia cada Request para um vetor.
+ *
+ * Esta função existe exclusivamente para dar suporte ao FCFS (e, no
+ * futuro, a qualquer outro algoritmo que precise processar "todas as
+ * requisições pendentes" fora da ordem de cylinder imposta pela AVL).
+ *
+ * Por que uma travessia em-ordem e não pré-ordem ou pós-ordem?
+ * Não importa, na verdade: a ORDEM em que os elementos são copiados
+ * para `buffer` é irrelevante para o FCFS, pois o vetor inteiro será
+ * reordenado por arrival_time logo em seguida (ver scheduler_fcfs).
+ * Usamos em-ordem apenas por ser a travessia mais natural e didática
+ * de uma BST/AVL — o mesmo padrão que avl_min_node()/avl_search() já
+ * usam implicitamente ao decidir para qual lado descer.
+ *
+ * Pré-condição fundamental: `buffer` deve ter espaço para pelo menos
+ * `sched->request_count` elementos — é responsabilidade de quem chama
+ * (scheduler_fcfs) garantir isso alocando o vetor com o tamanho certo
+ * antes de iniciar a travessia.
+ *
+ * @param  node    Raiz da subárvore atual (pode ser NULL — caso base
+ *                  da recursão, não faz nada).
+ * @param  buffer  Vetor de destino onde cada Request será copiada.
+ * @param  count   Ponteiro para um contador externo que indica a
+ *                  próxima posição livre em `buffer`. É incrementado
+ *                  a cada Request copiada, permitindo que a função
+ *                  saiba onde escrever mesmo entre chamadas
+ *                  recursivas (esquerda, nó atual, direita).
+ */
+static void scheduler_collect_inorder(const AVLNode *node,
+                                       Request *buffer,
+                                       uint32_t *count)
+{
+    /* Caso base: subárvore vazia — nada a copiar. */
+    if (node == NULL) {
+        return;
+    }
+
+    /* 1) Visita primeiro toda a subárvore esquerda. */
+    scheduler_collect_inorder(node->left, buffer, count);
+
+    /* 2) Copia a Request do nó atual para a próxima posição livre.
+     *    A cópia é por valor (struct Request inteira), assim como já
+     *    é feito em avl_create_node() — não há ponteiros pendentes. */
+    buffer[*count] = node->req;
+    (*count)++;
+
+    /* 3) Por fim, visita toda a subárvore direita. */
+    scheduler_collect_inorder(node->right, buffer, count);
+}
+
+/**
+ * @brief Função de comparação usada por qsort() para ordenar
+ *        requisições pela ordem cronológica de chegada (FCFS).
+ *
+ * Critério principal: arrival_time crescente — quem chegou primeiro
+ * é atendido primeiro, que é exatamente a definição do FCFS.
+ *
+ * Critério de desempate: id crescente. Duas requisições podem ter o
+ * mesmo arrival_time (por exemplo, se o gerador de carga admitir
+ * múltiplas chegadas no mesmo tick simulado); nesse caso, usamos o id
+ * — atribuído sequencialmente no momento da criação da requisição —
+ * como critério de desempate estável e determinístico.
+ *
+ * Assinatura compatível com qsort(): recebe dois `const void *`,
+ * que internamente são reinterpretados como `const Request *`.
+ * Retorna:
+ *   < 0  se a  deve vir antes de b
+ *   > 0  se a  deve vir depois de b
+ *   0    se são equivalentes para fins de ordenação
+ *
+ * @param  a  Ponteiro genérico para a primeira Request.
+ * @param  b  Ponteiro genérico para a segunda Request.
+ * @return Resultado da comparação, no formato exigido por qsort().
+ */
+static int scheduler_compare_by_arrival(const void *a, const void *b)
+{
+    const Request *req_a = (const Request *)a;
+    const Request *req_b = (const Request *)b;
+
+    /* Critério principal: quem chegou antes vem primeiro. */
+    if (req_a->arrival_time < req_b->arrival_time) {
+        return -1;
+    }
+    if (req_a->arrival_time > req_b->arrival_time) {
+        return 1;
+    }
+
+    /* Empate em arrival_time: desempata pelo id (ordem de criação). */
+    if (req_a->id < req_b->id) {
+        return -1;
+    }
+    if (req_a->id > req_b->id) {
+        return 1;
+    }
+
+    /* Praticamente impossível (ids são únicos), mas mantido por
+     * completude: se tudo é igual, a ordem entre elas não importa. */
+    return 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -132,6 +235,109 @@ AVLNode *scheduler_max(const Scheduler *sched)
 {
     if (sched == NULL || sched->root == NULL) return NULL;
     return scheduler_max_node(sched->root);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Algoritmos de escalonamento                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Implementação do FCFS descrita em detalhe no Doxygen de scheduler.h.
+ * Aqui comentamos apenas as decisões de implementação que não cabem
+ * na documentação de interface (por serem detalhes internos).
+ */
+bool scheduler_fcfs(Scheduler *sched)
+{
+    /* Guarda de nulidade: sem Scheduler, não há o que fazer. */
+    if (sched == NULL) {
+        return false;
+    }
+
+    /* Fila vazia não é um erro — é apenas um trabalho trivialmente
+     * concluído. Retornamos sucesso sem alocar nada. */
+    if (sched->request_count == 0) {
+        return true;
+    }
+
+    /* --------------------------------------------------------------
+     * PASSO 1 — Extrair todas as requisições pendentes da AVL.
+     *
+     * Alocamos um vetor com espaço exato para `request_count`
+     * requisições. Usamos sched->request_count (mantido sempre
+     * sincronizado com o número real de nós da AVL por scheduler_add()
+     * e scheduler_remove()) em vez de contar os nós manualmente,
+     * evitando uma travessia extra só para descobrir o tamanho.
+     * ------------------------------------------------------------ */
+    uint32_t total = sched->request_count;
+
+    Request *pending = malloc(sizeof(Request) * (size_t)total);
+    if (pending == NULL) {
+        /* Falha de alocação: nada foi alterado no Scheduler até aqui,
+         * então basta reportar o erro ao chamador. */
+        return false;
+    }
+
+    /* O contador começa em 0 e é incrementado dentro da travessia
+     * recursiva, uma vez para cada Request copiada. Ao final da
+     * chamada, `collected` deve ser igual a `total`. */
+    uint32_t collected = 0;
+    scheduler_collect_inorder(sched->root, pending, &collected);
+
+    /* --------------------------------------------------------------
+     * PASSO 2 — Ordenar o vetor por ordem de chegada (arrival_time).
+     *
+     * Esta é a etapa que efetivamente transforma "requisições
+     * ordenadas por cylinder" em "requisições ordenadas por
+     * chegada" — a essência do FCFS.
+     * ------------------------------------------------------------ */
+    qsort(pending, total, sizeof(Request), scheduler_compare_by_arrival);
+
+    /* --------------------------------------------------------------
+     * PASSO 3 — Atender as requisições, uma a uma, na ordem de
+     * chegada, exatamente como o vetor `pending` está ordenado agora.
+     * ------------------------------------------------------------ */
+    for (uint32_t i = 0; i < total; i++) {
+
+        const Request *current = &pending[i];
+
+        /* Move a cabeça do disco até o cilindro desta requisição.
+         * disk_move_head() atualiza, dentro de sched->disk:
+         *   - head_position       (novo cilindro)
+         *   - direction           (sentido do movimento)
+         *   - current_time        (+= seek + rotação + transferência)
+         *   - total_seek_distance (+= distância percorrida)
+         *
+         * disk_move_head() retorna false apenas se `disk` for NULL
+         * ou se `cylinder` estiver fora de [0, CONFIG_CYLINDERS).
+         * Como toda Request extraída veio de dentro da própria AVL
+         * do Scheduler (ou seja, já foi aceita por scheduler_add()),
+         * este caso não deveria ocorrer em uso normal. Ainda assim,
+         * tratamos defensivamente: se o movimento falhar, pulamos a
+         * remoção desta requisição específica (ela permanece na fila
+         * para uma tentativa futura) e seguimos para a próxima,
+         * em vez de interromper toda a simulação por causa de um
+         * único dado inconsistente. */
+        if (!disk_move_head(&sched->disk, current->cylinder)) {
+            continue;
+        }
+
+        /* Remove a requisição da AVL agora que foi efetivamente
+         * atendida. scheduler_remove() decrementa request_count e
+         * incrementa total_served internamente. */
+        scheduler_remove(sched, current->cylinder, current->id);
+    }
+
+    /* --------------------------------------------------------------
+     * PASSO 4 — Liberar o vetor auxiliar.
+     *
+     * `pending` foi alocado apenas para esta execução do algoritmo;
+     * o estado permanente do Scheduler continua vivendo na AVL
+     * (sched->root), que já foi devidamente esvaziada pelas chamadas
+     * a scheduler_remove() dentro do laço acima.
+     * ------------------------------------------------------------ */
+    free(pending);
+
+    return true;
 }
 
 /* ------------------------------------------------------------------ */
