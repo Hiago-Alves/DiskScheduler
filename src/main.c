@@ -151,7 +151,7 @@ int main(void)
             continue;
         }
         printf("Simulacao concluida.\n");
-
+        
         simulation_print_report(&sim);
 
     } while (ask_continue());
