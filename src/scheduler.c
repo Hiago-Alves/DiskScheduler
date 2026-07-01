@@ -1,7 +1,7 @@
 /**
  * @file    scheduler.c
  * @brief   Implementação da infraestrutura do escalonador de disco e
- *          do algoritmo de escalonamento FCFS.
+ *          dos algoritmos de escalonamento.
  *
  * Padrão: C11
  */
@@ -355,9 +355,7 @@ bool scheduler_fcfs(Scheduler *sched)
 }
 
 /**
- * @brief Implementação do algoritmo SSTF.
- *
- * Conforme descrito em scheduler.h.
+ * Implementação do SSTF descrita em detalhe no Doxygen de scheduler.h.
  */
 bool scheduler_sstf(Scheduler *sched)
 {
@@ -421,6 +419,127 @@ bool scheduler_sstf(Scheduler *sched)
     return true;
 }
 
+/**
+ * Implementação do SCAN descrita em detalhe no Doxygen de scheduler.h.
+ */
+bool scheduler_scan(Scheduler *sched)
+{
+    if (sched == NULL) {
+        return false;
+    }
+
+    while (sched->request_count > 0) {
+        uint32_t head = sched->disk.head_position;
+        DiskDirection dir = sched->disk.direction;
+
+        /* Cria um nó fictício para usar com avl_successor e avl_predecessor.
+         * O id é definido como 0 (menor que qualquer id real) para que,
+         * no caso de cylinder igual a head, tanto o sucessor quanto o
+         * predecessor funcionem corretamente. */
+        AVLNode ficticio;
+        ficticio.req.cylinder = head;
+        ficticio.req.id = 0;
+        ficticio.left = NULL;
+        ficticio.right = NULL;
+        ficticio.height = 1;
+
+        AVLNode *chosen = NULL;
+
+        if (dir == DIR_RIGHT) {
+            /* Procura a primeira requisição com cylinder >= head_position */
+            chosen = avl_successor(sched->root, &ficticio);
+
+            /* Se não houver requisição à frente, inverte a direção */
+            if (chosen == NULL) {
+                sched->disk.direction = DIR_LEFT;
+                /* Continua o laço para tentar novamente com a nova direção */
+                continue;
+            }
+        } else { /* DIR_LEFT */
+            /* Procura a primeira requisição com cylinder <= head_position */
+            chosen = avl_predecessor(sched->root, &ficticio);
+
+            /* Se não houver requisição atrás, inverte a direção */
+            if (chosen == NULL) {
+                sched->disk.direction = DIR_RIGHT;
+                /* Continua o laço para tentar novamente com a nova direção */
+                continue;
+            }
+        }
+
+        /* Move a cabeça para o cilindro escolhido e remove a requisição */
+        if (!disk_move_head(&sched->disk, chosen->req.cylinder)) {
+            /* Falha inesperada: cilindro inválido; interrompe para evitar loop */
+            break;
+        }
+        scheduler_remove(sched, chosen->req.cylinder, chosen->req.id);
+    }
+
+    return true;
+}
+
+/**
+ * Implementação do C-SCAN descrita em detalhe no Doxygen de scheduler.h.
+ */
+bool scheduler_cscan(Scheduler *sched)
+{
+    if (sched == NULL) {
+        return false;
+    }
+
+    /* C-SCAN sempre se move para a direita; garante que a direção esteja
+     * configurada corretamente, embora não seja estritamente necessária. */
+    sched->disk.direction = DIR_RIGHT;
+
+    while (sched->request_count > 0) {
+        uint32_t head = sched->disk.head_position;
+
+        /* Cria nó fictício para sucessor */
+        AVLNode ficticio;
+        ficticio.req.cylinder = head;
+        ficticio.req.id = 0;
+        ficticio.left = NULL;
+        ficticio.right = NULL;
+        ficticio.height = 1;
+
+        /* Procura o sucessor (primeira requisição com cylinder >= head) */
+        AVLNode *succ = avl_successor(sched->root, &ficticio);
+
+        if (succ != NULL) {
+            /* Existe requisição à frente: atende normalmente */
+            if (!disk_move_head(&sched->disk, succ->req.cylinder)) {
+                break;
+            }
+            scheduler_remove(sched, succ->req.cylinder, succ->req.id);
+        } else {
+            /*
+             * Não há requisições à frente: faz o "salto circular"
+             * 1) Move para o cilindro máximo (CONFIG_CYLINDERS - 1)
+             * 2) Move para o cilindro 0
+             *
+             * Essas movimentações não removem requisições; apenas reposicionam
+             * a cabeça para o início do disco, mantendo a métrica de distância
+             * correta. A direção permanece DIR_RIGHT.
+             */
+            uint32_t max_cylinder = CONFIG_CYLINDERS - 1;
+
+            /* Move para o extremo direito */
+            if (!disk_move_head(&sched->disk, max_cylinder)) {
+                break;
+            }
+            /* Move para o cilindro 0 */
+            if (!disk_move_head(&sched->disk, 0)) {
+                break;
+            }
+
+            /* Após o salto, a cabeça está em 0 e o laço continua,
+             * encontrando agora as requisições que estavam no início. */
+        }
+    }
+
+    return true;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Impressão e diagnóstico                                             */
 /* ------------------------------------------------------------------ */
@@ -434,7 +553,7 @@ void scheduler_print_stats(const Scheduler *sched)
 {
     if (sched == NULL) return;
 
-    printf("=== Scheduler - estado atual ===\n");
+    printf("=== Scheduler — estado atual ===\n");
     printf("  Requisicoes pendentes : %u\n",  sched->request_count);
     printf("  Requisicoes atendidas : %llu\n",
            (unsigned long long)sched->total_served);

@@ -15,8 +15,7 @@
  *   - Controlar o contador de requisições na fila
  *   - Expor operações de inserção e remoção de requisições
  *   - Expor impressão de estatísticas do estado atual
- *   - Expor os algoritmos de escalonamento (FCFS, e futuramente
- *     SSTF, SCAN, C-SCAN, EDF, Aging etc.)
+ *   - Expor os algoritmos de escalonamento (FCFS, SSTF, SCAN, C-SCAN)
  *
  * IMPORTANTE — por que a AVL não basta sozinha para o FCFS:
  * A árvore AVL do Scheduler é ordenada pelo campo `cylinder` de cada
@@ -259,7 +258,7 @@ AVLNode *scheduler_max(const Scheduler *sched);
  *                requisição atendida.
  */
 bool scheduler_fcfs(Scheduler *sched);
-
+ 
 /**
  * @brief Executa o algoritmo SSTF (Shortest Seek Time First).
  *
@@ -300,7 +299,113 @@ bool scheduler_fcfs(Scheduler *sched);
  *                função, portanto não há falha de alocação a ser reportada).
  */
 bool scheduler_sstf(Scheduler *sched);
- 
+
+/**
+ * @brief Executa o algoritmo SCAN (Elevator).
+ *
+ * O SCAN move a cabeça do disco em uma direção fixa, atendendo todas as
+ * requisições no caminho, até que não haja mais requisições naquela direção.
+ * Nesse momento, a direção é invertida e o movimento continua na direção oposta.
+ * Esse comportamento simula um elevador, daí o nome.
+ *
+ * Algoritmo, passo a passo:
+ *
+ *   1. Enquanto houver requisições pendentes:
+ *        a. Se a direção atual for DIR_RIGHT:
+ *             - Procura o sucessor da posição atual da cabeça na AVL
+ *               (primeira requisição com cylinder >= head_position).
+ *             - Se existir, escolhe esse nó.
+ *             - Se não existir, inverte a direção para DIR_LEFT e continua.
+ *        b. Se a direção atual for DIR_LEFT:
+ *             - Procura o predecessor da posição atual da cabeça na AVL
+ *               (primeira requisição com cylinder <= head_position).
+ *             - Se existir, escolhe esse nó.
+ *             - Se não existir, inverte a direção para DIR_RIGHT e continua.
+ *        c. Com o nó escolhido:
+ *             - Move a cabeça até o cilindro via disk_move_head().
+ *             - Remove a requisição via scheduler_remove().
+ *
+ *   2. A fila estará vazia ao final.
+ *
+ * A posição atual da cabeça pode não corresponder a uma requisição exata;
+ * para isso, utiliza-se um nó fictício com cylinder = head_position e id = 0
+ * (menor que qualquer id real) para que avl_successor() e avl_predecessor()
+ * funcionem corretamente.
+ *
+ * Complexidade:
+ *   - Cada iteração realiza uma busca na AVL (sucessor/predecessor) e uma
+ *     remoção, ambas O(log n). Portanto, O(n log n) para n requisições.
+ *
+ * Estado alterado:
+ *   - sched->disk           (via disk_move_head, uma vez por requisição)
+ *   - sched->root            (via scheduler_remove, esvaziado ao final)
+ *   - sched->request_count  (decrementado até chegar a 0)
+ *   - sched->total_served   (incrementado uma vez por requisição atendida)
+ *   - sched->disk.direction  (invertido quando não há mais requisições na direção)
+ *
+ * @param  sched  Ponteiro para o Scheduler. Não deve ser NULL.
+ * @return true   se a simulação SCAN foi executada com sucesso
+ *                (inclui o caso de fila vazia, que não é um erro).
+ *         false  se sched for NULL.
+ */
+bool scheduler_scan(Scheduler *sched);
+
+/**
+ * @brief Executa o algoritmo C-SCAN (Circular SCAN).
+ *
+ * O C-SCAN é uma variante do SCAN que sempre se move em uma única direção
+ * (neste projeto, sempre para a direita). Quando não há mais requisições
+ * à frente, a cabeça é movida diretamente para o cilindro máximo
+ * (CONFIG_CYLINDERS - 1) e depois para o cilindro 0, sem atender requisições
+ * durante esse "salto". O processo recomeça a partir do cilindro 0,
+ * atendendo novamente todas as requisições no caminho para a direita.
+ *
+ * Este comportamento oferece um tempo de espera mais uniforme entre
+ * os cilindros, evitando a "inversão de direção" que pode causar starvation
+ * em requisições que ficam atrás da cabeça.
+ *
+ * Algoritmo, passo a passo:
+ *
+ *   1. Enquanto houver requisições pendentes:
+ *        a. Procura o sucessor da posição atual da cabeça na AVL
+ *           (primeira requisição com cylinder >= head_position).
+ *        b. Se existir:
+ *             - Move a cabeça até o cilindro via disk_move_head().
+ *             - Remove a requisição via scheduler_remove().
+ *        c. Se não existir:
+ *             - Move a cabeça para CONFIG_CYLINDERS - 1 (extremo direito)
+ *               sem remover requisição (apenas atualiza posição).
+ *             - Move a cabeça para o cilindro 0 (salto circular)
+ *               sem remover requisição.
+ *             - Continua o laço (agora com head_position = 0).
+ *
+ *   2. A fila estará vazia ao final.
+ *
+ * A direção da cabeça permanece sempre DIR_RIGHT durante toda a execução,
+ * pois o C-SCAN nunca inverte.
+ *
+ * O salto para o extremo direito e depois para o 0 é feito com duas chamadas
+ * a disk_move_head() para manter a métrica de distância percorrida correta.
+ *
+ * Complexidade:
+ *   - Cada iteração realiza uma busca na AVL (sucessor) e uma remoção,
+ *     ambas O(log n). Portanto, O(n log n) para n requisições.
+ *
+ * Estado alterado:
+ *   - sched->disk           (via disk_move_head, uma vez por requisição
+ *                             e duas vezes por "salto" circular)
+ *   - sched->root            (via scheduler_remove, esvaziado ao final)
+ *   - sched->request_count  (decrementado até chegar a 0)
+ *   - sched->total_served   (incrementado uma vez por requisição atendida)
+ *   - sched->disk.direction  NÃO é alterado (permanece DIR_RIGHT)
+ *
+ * @param  sched  Ponteiro para o Scheduler. Não deve ser NULL.
+ * @return true   se a simulação C-SCAN foi executada com sucesso
+ *                (inclui o caso de fila vazia, que não é um erro).
+ *         false  se sched for NULL.
+ */
+bool scheduler_cscan(Scheduler *sched);
+
 /* ------------------------------------------------------------------ */
 /*  Impressão e diagnóstico                                             */
 /* ------------------------------------------------------------------ */
