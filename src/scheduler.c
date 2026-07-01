@@ -134,6 +134,20 @@ static int scheduler_compare_by_arrival(const void *a, const void *b)
     return 0;
 }
 
+/**
+ * @brief Calcula o valor absoluto da diferença entre dois uint32_t.
+ *
+ * Necessário para evitar underflow na subtração.
+ *
+ * @param  a  Primeiro valor.
+ * @param  b  Segundo valor.
+ * @return |a - b| como uint32_t.
+ */
+static uint32_t uint32_abs_diff(uint32_t a, uint32_t b)
+{
+    return (a >= b) ? (a - b) : (b - a);
+}
+
 /* ------------------------------------------------------------------ */
 /*  Ciclo de vida                                                       */
 /* ------------------------------------------------------------------ */
@@ -336,6 +350,73 @@ bool scheduler_fcfs(Scheduler *sched)
      * a scheduler_remove() dentro do laço acima.
      * ------------------------------------------------------------ */
     free(pending);
+
+    return true;
+}
+
+/**
+ * @brief Implementação do algoritmo SSTF.
+ *
+ * Conforme descrito em scheduler.h.
+ */
+bool scheduler_sstf(Scheduler *sched)
+{
+    if (sched == NULL) {
+        return false;
+    }
+
+    while (sched->request_count > 0) {
+        uint32_t head = sched->disk.head_position;
+
+        /* Cria um nó fictício para usar com avl_predecessor e avl_successor.
+         * O id é definido como 0, assumindo que ids de requisição começam em 1;
+         * isso garante que o fictício seja considerado menor que qualquer
+         * requisição existente para o mesmo cylinder, fazendo com que
+         * avl_successor encontre o nó com menor id entre os de cylinder igual,
+         * e avl_predecessor tenda a NULL ou a um predecessor menor. */
+        AVLNode ficticio;
+        ficticio.req.cylinder = head;
+        ficticio.req.id = 0;
+        ficticio.left = NULL;
+        ficticio.right = NULL;
+        ficticio.height = 1;
+
+        AVLNode *pred = avl_predecessor(sched->root, &ficticio);
+        AVLNode *succ = avl_successor(sched->root, &ficticio);
+
+        AVLNode *chosen = NULL;
+
+        /* Seleciona o nó mais próximo */
+        if (pred == NULL && succ == NULL) {
+            /* Inconsistência: fila não vazia mas sem pred/succ? Não deve ocorrer. */
+            break;
+        } else if (pred == NULL) {
+            chosen = succ;
+        } else if (succ == NULL) {
+            chosen = pred;
+        } else {
+            uint32_t dist_pred = uint32_abs_diff(pred->req.cylinder, head);
+            uint32_t dist_succ = uint32_abs_diff(succ->req.cylinder, head);
+
+            if (dist_pred < dist_succ) {
+                chosen = pred;
+            } else if (dist_succ < dist_pred) {
+                chosen = succ;
+            } else {
+                /* Empate: escolhe o menor cylinder */
+                chosen = (pred->req.cylinder <= succ->req.cylinder) ? pred : succ;
+            }
+        }
+
+        /* Move a cabeça para o cilindro escolhido */
+        if (!disk_move_head(&sched->disk, chosen->req.cylinder)) {
+            /* Falha inesperada: cilindro inválido; interrompe para evitar loop */
+            break;
+        }
+
+        /* Remove a requisição atendida */
+        scheduler_remove(sched, chosen->req.cylinder, chosen->req.id);
+    }
 
     return true;
 }

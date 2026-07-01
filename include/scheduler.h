@@ -259,6 +259,47 @@ AVLNode *scheduler_max(const Scheduler *sched);
  *                requisição atendida.
  */
 bool scheduler_fcfs(Scheduler *sched);
+
+/**
+ * @brief Executa o algoritmo SSTF (Shortest Seek Time First).
+ *
+ * O SSTF seleciona a requisição pendente com a menor distância de seek
+ * em relação à posição atual da cabeça do disco. A cada iteração, a cabeça
+ * se move para o cilindro da requisição mais próxima, atendendo-a e
+ * removendo-a da fila. Esse processo é repetido até que a fila se esvazie.
+ *
+ * Algoritmo, passo a passo:
+ *
+ *   1. Enquanto houver requisições pendentes:
+ *        a. Determina o predecessor e o sucessor da posição atual da cabeça
+ *           na AVL (utilizando avl_predecessor() e avl_successor() com um
+ *           nó fictício).
+ *        b. Se apenas um dos dois existir, escolhe esse.
+ *        c. Caso contrário, calcula a distância absoluta da cabeça até cada
+ *           um e escolhe o que tem a menor distância.
+ *        d. Em caso de empate nas distâncias, escolhe o de menor cylinder.
+ *        e. Move a cabeça até o cilindro escolhido via disk_move_head().
+ *        f. Remove a requisição escolhida da fila via scheduler_remove().
+ *
+ *   2. A fila estará vazia ao final.
+ *
+ * Complexidade:
+ *   - Cada iteração realiza duas buscas na AVL (predecessor/sucessor) e uma
+ *     remoção, todas O(log n). Portanto, O(n log n) para n requisições.
+ *
+ * Estado alterado:
+ *   - sched->disk           (via disk_move_head, uma vez por requisição)
+ *   - sched->root            (via scheduler_remove, esvaziado ao final)
+ *   - sched->request_count  (decrementado até chegar a 0)
+ *   - sched->total_served   (incrementado uma vez por requisição atendida)
+ *
+ * @param  sched  Ponteiro para o Scheduler. Não deve ser NULL.
+ * @return true   se a simulação SSTF foi executada com sucesso
+ *                (inclui o caso de fila vazia, que não é um erro).
+ *         false  se sched for NULL (não há alocação de memória nesta
+ *                função, portanto não há falha de alocação a ser reportada).
+ */
+bool scheduler_sstf(Scheduler *sched);
  
 /* ------------------------------------------------------------------ */
 /*  Impressão e diagnóstico                                             */
