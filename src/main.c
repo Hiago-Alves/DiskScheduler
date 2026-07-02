@@ -44,7 +44,7 @@ static void print_menu(void)
     printf("|  1 - FCFS                                |\n");
     printf("|  2 - SSTF                                |\n");
     printf("|  3 - SCAN                                |\n");
-    printf("|  4 - C-SCAN                              |\n");
+    printf("|  4 - C-LOOK                              |\n");
     printf("|  5 - DEADLINE                            |\n");
     printf("+-------------------------------------------+\n");
     printf("\n");

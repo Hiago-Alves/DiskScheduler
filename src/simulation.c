@@ -208,7 +208,7 @@ void simulation_print_report(const Simulation *sim)
     switch (sim->algorithm) {
         case ALG_FCFS:  algo_str = "FCFS"; break;
         case ALG_SSTF:  algo_str = "SSTF"; break;
-        case ALG_SCAN:  algo_str = "SCAN"; break;
+        case ALG_SCAN:  algo_str = "CLOOK"; break;
         case ALG_CSCAN: algo_str = "C-SCAN"; break;
     }
 

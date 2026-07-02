@@ -29,14 +29,6 @@
 #define CONFIG_CYLINDERS        1024u
 
 /**
- * @brief Limite de tempo de espera para considerar uma requisição "expirada".
- *
- * Se uma requisição esperar por este valor (em ticks) ou mais,
- * ela será atendida com prioridade máxima pelo algoritmo DEADLINE.
- */
-#define CONFIG_DEADLINE_LIMIT 50
-
-/**
  * @brief Posição inicial da cabeça de leitura/escrita ao ligar o disco.
  *
  * Representa o cilindro onde a cabeça repousa antes da simulação.
@@ -85,5 +77,33 @@
  * ajustado para testes que partem de um estado intermediário.
  */
 #define CONFIG_INITIAL_TIME     0u
+
+/* ------------------------------------------------------------------ */
+/*  Envelhecimento (Aging)                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * @brief Intervalo de tempo (em ticks) para incrementar a prioridade.
+ *
+ * A cada AGING_INTERVAL ticks de espera, a prioridade da requisição
+ * é incrementada em 1. Valores menores = aging mais agressivo.
+ */
+#define AGING_INTERVAL 5
+
+/**
+ * @brief Limiar de prioridade para atendimento prioritário.
+ *
+ * Quando a prioridade de uma requisição atinge ou ultrapassa este valor,
+ * ela será atendida imediatamente, independentemente da posição da cabeça.
+ */
+#define AGING_THRESHOLD 10
+
+/**
+ * @brief Limite de tempo de espera para considerar uma requisição "expirada".
+ *
+ * Se uma requisição esperar por este valor (em ticks) ou mais,
+ * ela será atendida com prioridade msáxima pelo algoritmo DEADLINE.
+ */
+#define CONFIG_DEADLINE_LIMIT 50
 
 #endif /* CONFIG_H */
