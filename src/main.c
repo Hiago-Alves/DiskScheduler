@@ -1,6 +1,6 @@
 /**
  * @file    main.c
- * @brief   Ponto de entrada do simulador de escalonamento de disco.
+ * @brief   Ponto de entrada do simulador.
  *
  * Padrao: C11
  */
@@ -11,7 +11,7 @@
 #include <ctype.h>
 #include <time.h>
 #include "../include/simulation.h"
-#include "../include/config.h"   /* Necessario para CONFIG_CYLINDERS */
+#include "../include/config.h"
 
 /* ------------------------------------------------------------------ */
 /*  Funcoes auxiliares de interface                                    */
@@ -46,31 +46,34 @@ static void print_menu(void)
     printf("|  3 - SCAN                                |\n");
     printf("|  4 - C-LOOK                              |\n");
     printf("|  5 - DEADLINE                            |\n");
+    printf("|  6 - TESTE DE FOGO (SSTF vs DEADLINE)   |\n");
     printf("+-------------------------------------------+\n");
     printf("\n");
     printf("Digite o numero do algoritmo: ");
 }
 
-static Algorithm select_algorithm(void)
+static LoadType read_load_type(void)
 {
     char input[16];
     uint32_t choice;
     while (1) {
-        print_menu();
+        printf("\nTipo de carga:\n");
+        printf("  1 - Aleatoria\n");
+        printf("  2 - Sequencial\n");
+        printf("  3 - Zipfiana\n");
+        printf("Escolha (1-3): ");
         if (!read_line(input, sizeof(input))) continue;
-        if (!parse_uint32(input, &choice, 1, 5)) {
-            printf("Opcao invalida. Digite um numero entre 1 e 4.\n");
+        if (!parse_uint32(input, &choice, 1, 3)) {
+            printf("Opcao invalida.\n");
             continue;
         }
         break;
     }
     switch (choice) {
-        case 1: return ALG_FCFS;
-        case 2: return ALG_SSTF;
-        case 3: return ALG_SCAN;
-        case 4: return ALG_CSCAN;
-        case 5: return ALG_DEADLINE;
-        default: return ALG_FCFS;
+        case 1: return LOAD_RANDOM;
+        case 2: return LOAD_SEQUENTIAL;
+        case 3: return LOAD_ZIPF;
+        default: return LOAD_RANDOM;
     }
 }
 
@@ -90,20 +93,11 @@ static uint32_t read_request_count(void)
     return count;
 }
 
-/**
- * @brief Le a posicao inicial da cabeca do disco.
- *
- * Solicita ao usuario um cilindro dentro dos limites validos.
- * A validacao utiliza CONFIG_CYLINDERS para definir o maximo.
- *
- * @return Cilindro inicial escolhido pelo usuario.
- */
 static uint32_t read_initial_head(void)
 {
     char input[32];
     uint32_t head;
     uint32_t max_cylinder = CONFIG_CYLINDERS - 1;
-
     while (1) {
         printf("Digite a posicao inicial da cabeca (0 a %u): ", max_cylinder);
         if (!read_line(input, sizeof(input))) continue;
@@ -113,7 +107,6 @@ static uint32_t read_initial_head(void)
         }
         break;
     }
-
     return head;
 }
 
@@ -121,13 +114,13 @@ static bool read_seed(uint32_t *seed)
 {
     char input[32];
     uint32_t value;
-    printf("Digite a semente para geracao aleatoria (0 para usar time(NULL)): ");
+    printf("Digite a semente (0 para usar time(NULL)): ");
     if (!read_line(input, sizeof(input))) {
         *seed = 0;
         return false;
     }
     if (!parse_uint32(input, &value, 0, UINT32_MAX)) {
-        printf("Valor invalido. Usando semente automatica (time(NULL)).\n");
+        printf("Valor invalido. Usando time(NULL).\n");
         *seed = 0;
         return false;
     }
@@ -163,38 +156,77 @@ int main(void)
 
     do {
         simulation_reset(&sim);
-        Algorithm algo = select_algorithm();
-        simulation_select_algorithm(&sim, algo);
+
+        uint32_t opcao;
+        while (1) {
+            print_menu();
+            char input[16];
+            if (!read_line(input, sizeof(input))) continue;
+            if (!parse_uint32(input, &opcao, 1, 6)) {
+                printf("Opcao invalida.\n");
+                continue;
+            }
+            break;
+        }
+
+        if (opcao == 6) {
+            simulation_enable_gnuplot(&sim, true);
+            simulation_run_fire_test(&sim);
+            simulation_enable_gnuplot(&sim, false);
+            continue;
+        }
+
+        /* Mapeia opcao para algoritmo */
+        switch (opcao) {
+            case 1: simulation_select_algorithm(&sim, ALG_FCFS); break;
+            case 2: simulation_select_algorithm(&sim, ALG_SSTF); break;
+            case 3: simulation_select_algorithm(&sim, ALG_SCAN); break;
+            case 4: simulation_select_algorithm(&sim, ALG_CSCAN); break;
+            case 5: simulation_select_algorithm(&sim, ALG_DEADLINE); break;
+            default: simulation_select_algorithm(&sim, ALG_FCFS);
+        }
 
         uint32_t count = read_request_count();
-
-        /* NOVA FUNCIONALIDADE: ler posicao inicial da cabeca */
         uint32_t initial_head = read_initial_head();
         simulation_set_initial_head(&sim, initial_head);
+
+        LoadType load = read_load_type();
+        simulation_set_load_type(&sim, load);
 
         uint32_t seed;
         read_seed(&seed);
         simulation_set_seed(&sim, seed);
 
+        simulation_enable_gnuplot(&sim, true);
+
         printf("\nGerando %u requisicoes... ", count);
         if (!simulation_generate_requests(&sim, count)) {
-            printf("ERRO: Falha ao gerar requisicoes (memoria insuficiente?)\n");
+            printf("ERRO: Falha ao gerar requisicoes.\n");
             continue;
         }
         printf("OK.\n");
 
-        printf("Executando algoritmo %s...\n",
-               (algo == ALG_FCFS) ? "FCFS" :
-               (algo == ALG_SSTF) ? "SSTF" :
-               (algo == ALG_SCAN) ? "SCAN" : "C-SCAN");
+        scheduler_coalesce(&sim.scheduler);
+
+        const char *algo_name;
+        switch (sim.algorithm) {
+            case ALG_FCFS:  algo_name = "FCFS"; break;
+            case ALG_SSTF:  algo_name = "SSTF"; break;
+            case ALG_SCAN:  algo_name = "SCAN"; break;
+            case ALG_CSCAN: algo_name = "C-LOOK"; break;
+            case ALG_DEADLINE: algo_name = "DEADLINE"; break;
+            default: algo_name = "Desconhecido";
+        }
+        printf("Executando algoritmo %s...\n", algo_name);
 
         if (!simulation_run(&sim)) {
             printf("ERRO: Falha ao executar a simulacao.\n");
             continue;
         }
         printf("Simulacao concluida.\n");
-        
+
         simulation_print_report(&sim);
+        simulation_enable_gnuplot(&sim, false);
 
     } while (ask_continue());
 
