@@ -258,7 +258,7 @@ AVLNode *scheduler_max(const Scheduler *sched);
  *                requisição atendida.
  */
 bool scheduler_fcfs(Scheduler *sched);
- 
+
 /**
  * @brief Executa o algoritmo SSTF (Shortest Seek Time First).
  *
@@ -405,7 +405,24 @@ bool scheduler_scan(Scheduler *sched);
  *         false  se sched for NULL.
  */
 bool scheduler_cscan(Scheduler *sched);
-
+/**
+ * @brief Executa o algoritmo DEADLINE (prioridade para requisições expiradas).
+ *
+ * Este algoritmo é uma extensão do SSTF. A cada iteração, verifica se existe
+ * alguma requisição cujo tempo de espera (current_time - arrival_time) seja
+ * maior ou igual a CONFIG_DEADLINE_LIMIT. Se existir, atende essa requisição
+ * imediatamente. Caso contrário, executa exatamente a lógica do SSTF
+ * (escolhe a requisição mais próxima da cabeça).
+ *
+ * O objetivo é evitar starvation de requisições antigas, garantindo que
+ * nenhuma requisição espere além do limite configurado.
+ *
+ * @param  sched  Ponteiro para o Scheduler.
+ * @return true   se a simulação foi executada com sucesso (incluindo fila vazia).
+ *         false  se sched for NULL.
+ */
+bool scheduler_deadline(Scheduler *sched);
+ 
 /* ------------------------------------------------------------------ */
 /*  Impressão e diagnóstico                                             */
 /* ------------------------------------------------------------------ */

@@ -29,6 +29,14 @@
 #define CONFIG_CYLINDERS        1024u
 
 /**
+ * @brief Limite de tempo de espera para considerar uma requisição "expirada".
+ *
+ * Se uma requisição esperar por este valor (em ticks) ou mais,
+ * ela será atendida com prioridade máxima pelo algoritmo DEADLINE.
+ */
+#define CONFIG_DEADLINE_LIMIT 50
+
+/**
  * @brief Posição inicial da cabeça de leitura/escrita ao ligar o disco.
  *
  * Representa o cilindro onde a cabeça repousa antes da simulação.

@@ -7,10 +7,13 @@
  */
 
 #include "../include/scheduler.h"
+#include "../include/config.h"  
+#include <stdio.h>
+#include <stdlib.h>
 
-#include <stdio.h>    /* printf          */
-#include <stdlib.h>   /* malloc, free, qsort */
-
+#ifndef CONFIG_DEADLINE_LIMIT
+#define CONFIG_DEADLINE_LIMIT 50
+#endif
 /* ------------------------------------------------------------------ */
 /*  Funções auxiliares internas (static)                               */
 /* ------------------------------------------------------------------ */
@@ -32,7 +35,39 @@ static AVLNode *scheduler_max_node(AVLNode *node)
     }
     return node;
 }
+/**
+ * @brief Percorre a AVL em ordem e retorna a primeira requisição expirada.
+ *
+ * Uma requisição é considerada expirada se:
+ *   current_time - req.arrival_time >= CONFIG_DEADLINE_LIMIT
+ *
+ * A busca é feita em ordem (esquerda, nó, direita) para priorizar cilindros
+ * menores, mas qualquer ordem serve; o critério é apenas encontrar uma.
+ *
+ * @param  root          Raiz da subárvore (pode ser NULL).
+ * @param  current_time  Tempo atual da simulação.
+ * @return Ponteiro para o nó expirado, ou NULL se nenhum for encontrado.
+ */
+static AVLNode *scheduler_find_expired(const AVLNode *root, uint64_t current_time)
+{
+    if (root == NULL) {
+        return NULL;
+    }
 
+    /* Primeiro, verifica subárvore esquerda (cilindros menores) */
+    AVLNode *left = scheduler_find_expired(root->left, current_time);
+    if (left != NULL) {
+        return left;
+    }
+
+    /* Verifica o nó atual */
+    if (current_time - root->req.arrival_time >= CONFIG_DEADLINE_LIMIT) {
+        return (AVLNode *)root;   /* Cast para remover const – retornamos apenas para leitura */
+    }
+
+    /* Depois, subárvore direita (cilindros maiores) */
+    return scheduler_find_expired(root->right, current_time);
+}
 /**
  * @brief Travessia em-ordem da AVL que copia cada Request para um vetor.
  *
@@ -535,6 +570,80 @@ bool scheduler_cscan(Scheduler *sched)
             /* Após o salto, a cabeça está em 0 e o laço continua,
              * encontrando agora as requisições que estavam no início. */
         }
+    }
+
+    return true;
+}
+/**
+ * @brief Implementação do algoritmo DEADLINE.
+ *
+ * Conforme descrito em scheduler.h.
+ */
+bool scheduler_deadline(Scheduler *sched)
+{
+    if (sched == NULL) {
+        return false;
+    }
+
+    while (sched->request_count > 0) {
+        uint64_t current_time = sched->disk.current_time;
+
+        /* 1) Verifica se há alguma requisição expirada */
+        AVLNode *expired = scheduler_find_expired(sched->root, current_time);
+
+        if (expired != NULL) {
+            /* Atende a requisição expirada imediatamente */
+            if (!disk_move_head(&sched->disk, expired->req.cylinder)) {
+                break;
+            }
+            scheduler_remove(sched, expired->req.cylinder, expired->req.id);
+            continue;   /* Volta ao início do loop para verificar novamente */
+        }
+
+        /*
+         * 2) Nenhuma expirada: executa exatamente a lógica do SSTF
+         *    (código copiado da função scheduler_sstf).
+         */
+        uint32_t head = sched->disk.head_position;
+
+        /* Nó fictício para buscar predecessor e sucessor */
+        AVLNode ficticio;
+        ficticio.req.cylinder = head;
+        ficticio.req.id = 0;
+        ficticio.left = NULL;
+        ficticio.right = NULL;
+        ficticio.height = 1;
+
+        AVLNode *pred = avl_predecessor(sched->root, &ficticio);
+        AVLNode *succ = avl_successor(sched->root, &ficticio);
+        AVLNode *chosen = NULL;
+
+        /* Seleciona o nó mais próximo */
+        if (pred == NULL && succ == NULL) {
+            break;   /* Inconsistência – não deve ocorrer */
+        } else if (pred == NULL) {
+            chosen = succ;
+        } else if (succ == NULL) {
+            chosen = pred;
+        } else {
+            uint32_t dist_pred = uint32_abs_diff(pred->req.cylinder, head);
+            uint32_t dist_succ = uint32_abs_diff(succ->req.cylinder, head);
+
+            if (dist_pred < dist_succ) {
+                chosen = pred;
+            } else if (dist_succ < dist_pred) {
+                chosen = succ;
+            } else {
+                /* Empate: escolhe o menor cylinder */
+                chosen = (pred->req.cylinder <= succ->req.cylinder) ? pred : succ;
+            }
+        }
+
+        /* Move a cabeça e remove a requisição */
+        if (!disk_move_head(&sched->disk, chosen->req.cylinder)) {
+            break;
+        }
+        scheduler_remove(sched, chosen->req.cylinder, chosen->req.id);
     }
 
     return true;
